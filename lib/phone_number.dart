@@ -30,7 +30,7 @@ class PhoneNumber {
     }
 
     try {
-      Country country = getCountry(completeNumber);
+      Country country = getCountryByIsoCode(completeNumber);
       String number = completeNumber.startsWith('+')
           ? completeNumber.substring(1 + country.dialCode.length)
           : completeNumber.substring(country.dialCode.length);
@@ -47,7 +47,7 @@ class PhoneNumber {
 
   bool isValidNumber() {
     try {
-      Country country = getCountry(completeNumber);
+      Country country = getCountryByIsoCode(completeNumber);
 
       if (number.length < country.minLength) {
         throw NumberTooShortException();
@@ -65,25 +65,33 @@ class PhoneNumber {
 
   String get completeNumber => '$countryCode$number';
 
-  static Country getCountry(String phoneNumber) {
+  static Country getCountryByIsoCode(String phoneNumber) {
     if (phoneNumber.isEmpty) {
       throw NumberTooShortException();
     }
 
-    List<Country> matchingCountries = countries.where((country) {
-      String dialCode = country.dialCode;
-      return phoneNumber.startsWith('+')
-          ? phoneNumber.substring(1).startsWith(dialCode)
-          : phoneNumber.startsWith(dialCode);
-    }).toList();
+    // Extract the ISO code from the phone number
+    final isoCode = _extractIsoCode(phoneNumber);
 
-    if (matchingCountries.isEmpty) {
-      throw CountryNotFoundException();
+    // Find the country by ISO code
+    final country =
+        countries.firstWhere((country) => country.code == isoCode, orElse: () => throw CountryNotFoundException());
+
+    return country;
+  }
+
+  static String _extractIsoCode(String phoneNumber) {
+    // Remove '+' and extract the first digits that represent the country code
+    final digits = phoneNumber.startsWith('+') ? phoneNumber.substring(1) : phoneNumber;
+
+    // Look for a matching country dial code
+    for (var country in countries) {
+      if (digits.startsWith(country.dialCode)) {
+        return country.code;
+      }
     }
 
-    // Select the most specific match (longest dial code)
-    matchingCountries.sort((a, b) => b.dialCode.length.compareTo(a.dialCode.length));
-    return matchingCountries.first;
+    throw CountryNotFoundException();
   }
 
   @override
