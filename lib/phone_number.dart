@@ -6,6 +6,8 @@ class NumberTooShortException implements Exception {}
 
 class InvalidCharactersException implements Exception {}
 
+class CountryNotFoundException implements Exception {}
+
 class PhoneNumber {
   String countryISOCode;
   String countryCode;
@@ -18,62 +20,74 @@ class PhoneNumber {
   });
 
   factory PhoneNumber.fromCompleteNumber({required String completeNumber}) {
-    if (completeNumber == "") {
-      return PhoneNumber(countryISOCode: "", countryCode: "", number: "");
+    if (completeNumber.isEmpty) {
+      throw NumberTooShortException();
+    }
+
+    final validPhoneNumber = RegExp(r'^\+?[0-9]+$');
+    if (!validPhoneNumber.hasMatch(completeNumber)) {
+      throw InvalidCharactersException();
     }
 
     try {
       Country country = getCountry(completeNumber);
-      String number;
-      if (completeNumber.startsWith('+')) {
-        number = completeNumber.substring(1 + country.dialCode.length + country.regionCode.length);
-      } else {
-        number = completeNumber.substring(country.dialCode.length + country.regionCode.length);
-      }
+      String number = completeNumber.startsWith('+')
+          ? completeNumber.substring(1 + country.dialCode.length)
+          : completeNumber.substring(country.dialCode.length);
+
       return PhoneNumber(
-          countryISOCode: country.code, countryCode: country.dialCode + country.regionCode, number: number);
-    } on InvalidCharactersException {
-      rethrow;
-      // ignore: unused_catch_clause
-    } on Exception catch (e) {
-      return PhoneNumber(countryISOCode: "", countryCode: "", number: "");
+        countryISOCode: country.code,
+        countryCode: country.dialCode,
+        number: number,
+      );
+    } catch (e) {
+      throw CountryNotFoundException();
     }
   }
 
   bool isValidNumber() {
-    Country country = getCountry(completeNumber);
-    if (number.length < country.minLength) {
-      throw NumberTooShortException();
-    }
+    try {
+      Country country = getCountry(completeNumber);
 
-    if (number.length > country.maxLength) {
-      throw NumberTooLongException();
+      if (number.length < country.minLength) {
+        throw NumberTooShortException();
+      }
+
+      if (number.length > country.maxLength) {
+        throw NumberTooLongException();
+      }
+
+      return true;
+    } catch (e) {
+      return false;
     }
-    return true;
   }
 
-  String get completeNumber {
-    return countryCode + number;
-  }
+  String get completeNumber => '$countryCode$number';
 
   static Country getCountry(String phoneNumber) {
-    if (phoneNumber == "") {
+    if (phoneNumber.isEmpty) {
       throw NumberTooShortException();
     }
 
-    final validPhoneNumber = RegExp(r'^[+0-9]*[0-9]*$');
+    List<Country> matchingCountries = countries.where((country) {
+      String dialCode = country.dialCode;
+      return phoneNumber.startsWith('+')
+          ? phoneNumber.substring(1).startsWith(dialCode)
+          : phoneNumber.startsWith(dialCode);
+    }).toList();
 
-    if (!validPhoneNumber.hasMatch(phoneNumber)) {
-      throw InvalidCharactersException();
+    if (matchingCountries.isEmpty) {
+      throw CountryNotFoundException();
     }
 
-    if (phoneNumber.startsWith('+')) {
-      return countries
-          .firstWhere((country) => phoneNumber.substring(1).startsWith(country.dialCode + country.regionCode));
-    }
-    return countries.firstWhere((country) => phoneNumber.startsWith(country.dialCode + country.regionCode));
+    // Select the most specific match (longest dial code)
+    matchingCountries.sort((a, b) => b.dialCode.length.compareTo(a.dialCode.length));
+    return matchingCountries.first;
   }
 
   @override
-  String toString() => 'PhoneNumber(countryISOCode: $countryISOCode, countryCode: $countryCode, number: $number)';
+  String toString() {
+    return 'PhoneNumber(countryISOCode: $countryISOCode, countryCode: $countryCode, number: $number)';
+  }
 }
